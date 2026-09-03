@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+vendor/
+composer.lock
+package-lock.json
+
+# Secrets — nothing resembling a key belongs in this repository
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Build and tooling output
+dist/
+build/
+coverage/
+.redocly-cache/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
