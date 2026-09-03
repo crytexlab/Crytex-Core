@@ -1,0 +1,21 @@
+{
+  "name": "crytexlab/sdk",
+  "description": "PHP client for the Crytex intelligence layer: signals, forecasts, portfolio risk and agents.",
+  "type": "library",
+  "license": "MIT",
+  "keywords": ["crytex", "ctx", "crypto", "ai", "agents"],
+  "homepage": "https://github.com/crytexlab/crytex-core",
+  "require": {
+    "php": ">=8.1",
+    "ext-curl": "*",
+    "ext-json": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Crytex\\": "src/"
+    }
+  },
+  "config": {
+    "sort-packages": true
+  }
+}

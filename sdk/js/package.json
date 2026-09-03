@@ -1,0 +1,29 @@
+{
+  "name": "@crytexlab/sdk",
+  "version": "0.1.0",
+  "description": "Client for the Crytex intelligence layer: signals, forecasts, portfolio risk and agents.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": ["src", "README.md"],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "lint:spec": "redocly lint ../../spec/openapi.yaml"
+  },
+  "keywords": ["crytex", "ctx", "crypto", "ai", "agents", "signals"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/crytexlab/crytex-core.git",
+    "directory": "sdk/js"
+  },
+  "homepage": "https://github.com/crytexlab/crytex-core#readme",
+  "bugs": "https://github.com/crytexlab/crytex-core/issues",
+  "license": "MIT",
+  "devDependencies": {
+    "@redocly/cli": "^1.25.0"
+  }
+}
