@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crytexlab/crytex-core/spec/events.schema.json",
+  "title": "Crytex platform event envelope",
+  "description": "Every event on the platform stream. Events are facts about something that already happened; nothing on this stream causes a state change.",
+  "type": "object",
+  "required": ["id", "type", "ts", "source", "data"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Globally unique, sortable by time. ULID.",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "type": {
+      "description": "Past tense, always. There is no execute-style event type.",
+      "enum": [
+        "account.registered",
+        "account.level_changed",
+        "deposit.confirmed",
+        "withdrawal.requested",
+        "withdrawal.settled",
+        "stake.opened",
+        "stake.closed",
+        "stake.accrued",
+        "prediction.placed",
+        "prediction.resolved",
+        "launchpad.subscribed",
+        "referral.attributed",
+        "bounty.completed",
+        "market.tick",
+        "chain.transfer"
+      ]
+    },
+    "ts": { "type": "string", "format": "date-time", "description": "When the fact occurred, not when it was published." },
+    "source": {
+      "type": "string",
+      "description": "Emitting system.",
+      "enum": ["platform", "market_feed", "chain_indexer", "risk"]
+    },
+    "user_id": {
+      "type": ["integer", "null"],
+      "description": "Null for events with no user subject, such as market ticks.",
+      "minimum": 1
+    },
+    "trace_id": {
+      "type": ["string", "null"],
+      "description": "Set when the event was caused by an agent-assisted flow, so an action can be traced back to the conversation that prepared it."
+    },
+    "idempotency_key": {
+      "type": ["string", "null"],
+      "description": "Consumers must treat a repeated key as the same fact. The stream guarantees at-least-once delivery, not exactly-once."
+    },
+    "data": {
+      "type": "object",
+      "description": "Type-specific payload. Amounts are decimal strings, never floats. Currency is an explicit ISO or token symbol.",
+      "properties": {
+        "amount": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(\\.[0-9]{1,18})?$",
+          "description": "Decimal string. Floats are prohibited on this stream because binary rounding on money is not recoverable downstream."
+        },
+        "currency": { "type": "string", "pattern": "^[A-Z0-9]{2,10}$" },
+        "symbol": { "type": "string", "pattern": "^[A-Z0-9]{2,10}$" }
+      },
+      "additionalProperties": true
+    },
+    "pii": {
+      "type": "boolean",
+      "default": false,
+      "description": "Marks a payload containing personal data, so retention and regional routing rules apply to it."
+    }
+  },
+  "examples": [
+    {
+      "id": "01J8Z9K2M4Q7R3T5V6W8X9Y0Z1",
+      "type": "stake.opened",
+      "ts": "2026-09-03T10:22:41Z",
+      "source": "platform",
+      "user_id": 10241,
+      "trace_id": null,
+      "idempotency_key": "stake-88213",
+      "data": { "stake_id": 88213, "amount": "1500.00", "currency": "CTX", "lock_days": 90, "apr_bps": 1450 },
+      "pii": false
+    },
+    {
+      "id": "01J8Z9M0P1Q2R3T4V5W6X7Y8Z9",
+      "type": "prediction.resolved",
+      "ts": "2026-09-03T18:00:00Z",
+      "source": "platform",
+      "user_id": null,
+      "data": { "market_id": 4417, "outcome": "yes", "settled_volume": "412300.50", "currency": "USDT" }
+    }
+  ]
+}

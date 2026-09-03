@@ -1,0 +1,344 @@
+openapi: 3.1.0
+info:
+  title: Crytex API
+  version: 1.0.0-draft
+  summary: Public surface of the Crytex intelligence layer.
+  description: |
+    Read access to signals, forecasts and portfolio risk, plus conversational access to agents.
+
+    **What this API will never do:** move funds, or return a recommendation to buy, sell or stake.
+    An agent may return a *prepared* action; submitting it requires a separate, human-confirmed call
+    on the authenticated platform surface. See `docs/05-guardrails.md`.
+  license:
+    name: CC BY 4.0
+    url: https://creativecommons.org/licenses/by/4.0/
+  contact:
+    name: Crytex Lab
+    url: https://github.com/crytexlab
+
+servers:
+  - url: https://api.crytex.io/v1
+    description: Production
+  - url: https://sandbox.api.crytex.io/v1
+    description: Sandbox — deterministic fixtures, no real market data
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: signals
+    description: Scored, explained market signals.
+  - name: forecasts
+    description: Probabilistic outputs. Always an interval, never a point price.
+  - name: portfolio
+    description: Read-only analysis of the authenticated user's own positions.
+  - name: agents
+    description: Conversational access to declared agents.
+
+paths:
+  /signals:
+    get:
+      tags: [signals]
+      summary: List current signals
+      operationId: listSignals
+      parameters:
+        - name: symbols
+          in: query
+          description: Comma-separated symbols. Omit for all covered instruments.
+          schema: { type: string, example: "BTC,ETH,SOL" }
+        - name: min_score
+          in: query
+          schema: { type: number, minimum: 0, maximum: 1 }
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [signals, generated_at]
+                properties:
+                  signals:
+                    type: array
+                    items: { $ref: '#/components/schemas/Signal' }
+                  generated_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /forecasts/{symbol}:
+    get:
+      tags: [forecasts]
+      summary: Probability that a threshold is crossed within a horizon
+      description: |
+        Returns a probability with an interval, the model version, and the inputs used. There is no
+        endpoint that returns a predicted price, and there will not be one.
+      operationId: getForecast
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[A-Z0-9]{2,10}$' }
+        - name: horizon
+          in: query
+          required: true
+          schema: { type: string, enum: ['1h', '24h', '7d', '30d'] }
+        - name: threshold_pct
+          in: query
+          description: Move size in percent, signed. Example -10 asks for P(drop of 10% or more).
+          required: true
+          schema: { type: number }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Forecast' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /portfolio/risk:
+    get:
+      tags: [portfolio]
+      summary: Risk profile of the authenticated user's own portfolio
+      description: Descriptive only. Contains no recommendation and no target allocation.
+      operationId: getPortfolioRisk
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioRisk' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /agents:
+    get:
+      tags: [agents]
+      summary: List agents available to the caller at their tier
+      operationId: listAgents
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agents:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, version, tier, description]
+                      properties:
+                        id: { type: string, example: terminal.markets }
+                        version: { type: integer, example: 3 }
+                        tier: { type: string, enum: [read, suggest, act_with_confirmation] }
+                        description: { type: string }
+
+  /agents/{agent}/messages:
+    post:
+      tags: [agents]
+      summary: Send a message to an agent
+      description: |
+        Set `stream: true` to receive `text/event-stream` instead of JSON. Every response carries a
+        `trace_id` that resolves to the audit record for that run.
+      operationId: createAgentMessage
+      parameters:
+        - name: agent
+          in: path
+          required: true
+          schema: { type: string, example: terminal.markets }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string, maxLength: 4000 }
+                history:
+                  type: array
+                  maxItems: 20
+                  items:
+                    type: object
+                    required: [role, content]
+                    properties:
+                      role: { type: string, enum: [user, assistant] }
+                      content: { type: string, maxLength: 4000 }
+                surface:
+                  type: object
+                  description: What the user is looking at. Panel ids let references like "that chart" resolve.
+                  properties:
+                    page: { type: string, maxLength: 300 }
+                    open_panels:
+                      type: array
+                      items: { type: string }
+                stream: { type: boolean, default: false }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentResponse' }
+            text/event-stream:
+              schema: { type: string, description: 'SSE frames: token, panel, done.' }
+        '402':
+          description: Credit budget exhausted for the period.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API key issued in Account → API keys. Never place it in browser code.
+
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid credentials.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Too many requests.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: rate_limited }
+            message: { type: string }
+            trace_id: { type: string }
+
+    Signal:
+      type: object
+      required: [id, symbol, score, direction, rationale, inputs, generated_at]
+      properties:
+        id: { type: string }
+        symbol: { type: string }
+        score: { type: number, minimum: 0, maximum: 1 }
+        direction: { type: string, enum: [bullish, bearish, neutral] }
+        rationale:
+          type: string
+          description: Plain language. A signal without one is rejected by the intelligence layer.
+        inputs:
+          type: array
+          description: Feature ids that produced this signal, so any figure can be traced.
+          items: { type: string, example: feat_funding_eth_7d }
+        generated_at: { type: string, format: date-time }
+
+    Forecast:
+      type: object
+      required: [symbol, horizon, threshold_pct, probability, interval, model_version, generated_at]
+      properties:
+        symbol: { type: string }
+        horizon: { type: string }
+        threshold_pct: { type: number }
+        probability: { type: number, minimum: 0, maximum: 1 }
+        interval:
+          type: object
+          required: [low, high, confidence]
+          properties:
+            low: { type: number }
+            high: { type: number }
+            confidence: { type: number, example: 0.9 }
+        model_version: { type: string }
+        limitations:
+          type: string
+          description: What the model cannot see. Rendered alongside the number, not hidden behind a tooltip.
+        generated_at: { type: string, format: date-time }
+
+    PortfolioRisk:
+      type: object
+      required: [concentration, drawdown_30d, exposure]
+      properties:
+        concentration:
+          type: object
+          description: Herfindahl index over positions. 1 is a single asset.
+          properties:
+            index: { type: number }
+            top_holding: { type: string }
+        drawdown_30d: { type: number }
+        exposure:
+          type: array
+          items:
+            type: object
+            properties:
+              symbol: { type: string }
+              share: { type: number }
+        notes:
+          type: string
+          description: Descriptive observations only. Never a recommendation.
+
+    AgentResponse:
+      type: object
+      required: [trace_id, agent, panels, stopped_early]
+      properties:
+        trace_id: { type: string, example: trc_01J8Z9K2M }
+        agent: { type: string }
+        agent_version: { type: integer }
+        panels:
+          type: array
+          items: { $ref: '#/components/schemas/Panel' }
+        prepared_action:
+          description: |
+            Present only for agents at `suggest` or above. Inert. Submitting it requires a separate
+            confirmed call; the confirmation is bound to `action_hash`, expires in 90 seconds and is
+            single-use.
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [kind, action_hash, expires_at, payload]
+              properties:
+                kind: { type: string, enum: [order, stake, none] }
+                action_hash: { type: string }
+                expires_at: { type: string, format: date-time }
+                payload: { type: object, additionalProperties: true }
+        stopped_early:
+          type: boolean
+          description: True when a budget limit finalised the run before the agent was done.
+        usage:
+          type: object
+          properties:
+            credits: { type: integer }
+            latency_ms: { type: integer }
+
+    Panel:
+      type: object
+      required: [type]
+      description: A rendering instruction. Agents never emit HTML.
+      properties:
+        type: { type: string, enum: [narrative, chart, table, signal, order_ticket, disclosure] }
+        id: { type: string }
+        text: { type: string }
+        citations:
+          type: array
+          items: { type: string }
+        data:
+          type: object
+          additionalProperties: true

@@ -1,1 +1,116 @@
-
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crytexlab/crytex-core/spec/agent-manifest.schema.json",
+  "title": "Crytex agent manifest",
+  "description": "Declarative definition of an agent. The runtime refuses to load a manifest that does not validate against this schema.",
+  "type": "object",
+  "required": ["id", "version", "description", "tier", "model", "budget", "tools", "guardrails", "evaluation"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable identifier, namespaced by surface. Example: terminal.markets",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*){1,3}$"
+    },
+    "version": {
+      "type": "integer",
+      "description": "Incremented on any change. Audit records store this value.",
+      "minimum": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 400
+    },
+    "tier": {
+      "description": "Highest permission the agent may exercise. The list is closed; there is no autonomous tier.",
+      "enum": ["read", "suggest", "act_with_confirmation"]
+    },
+    "model": {
+      "type": "object",
+      "required": ["class", "max_output_tokens"],
+      "additionalProperties": false,
+      "properties": {
+        "class": {
+          "description": "Capability class, not a provider model id. Provider mapping lives in runtime config so a manifest survives a provider change.",
+          "enum": ["fast", "reasoning"]
+        },
+        "max_output_tokens": { "type": "integer", "minimum": 64, "maximum": 8000 },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "description": "Hard stops. Exceeding any of these finalises the run and marks the response as stopped early.",
+      "required": ["max_steps", "max_seconds", "max_credits"],
+      "additionalProperties": false,
+      "properties": {
+        "max_steps": { "type": "integer", "minimum": 1, "maximum": 32 },
+        "max_seconds": { "type": "integer", "minimum": 1, "maximum": 120 },
+        "max_credits": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "tools": {
+      "type": "array",
+      "description": "Tool names the agent may call. A tool whose own tier exceeds the agent tier is rejected at load time.",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" },
+      "uniqueItems": true,
+      "maxItems": 24
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": { "enum": ["open_panels", "user_tier", "locale", "positions", "balances", "recent_events"] },
+          "uniqueItems": true
+        },
+        "exclude": {
+          "type": "array",
+          "items": { "enum": ["marketing", "bonus_state", "other_users", "kyc_documents"] },
+          "uniqueItems": true
+        }
+      }
+    },
+    "guardrails": {
+      "type": "object",
+      "required": ["input", "output"],
+      "additionalProperties": false,
+      "properties": {
+        "input": {
+          "type": "array",
+          "items": { "enum": ["prompt_injection", "pii_strip", "rate_limit", "language_detect"] },
+          "uniqueItems": true
+        },
+        "output": {
+          "type": "array",
+          "description": "no_advice and forecast_has_interval are mandatory on any agent whose surface renders numbers.",
+          "items": { "enum": ["no_advice", "no_guarantees", "forecast_has_interval", "citations_resolve", "no_cross_user_data"] },
+          "uniqueItems": true
+        }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "required": ["golden_set", "min_pass_rate"],
+      "additionalProperties": false,
+      "properties": {
+        "golden_set": { "type": "string", "description": "Repository-relative path to a JSONL evaluation set." },
+        "min_pass_rate": { "type": "number", "minimum": 0.8, "maximum": 1 },
+        "refusal_set": { "type": "string", "description": "Cases the agent must refuse. A regression here blocks release." }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "tier": { "const": "act_with_confirmation" } }, "required": ["tier"] },
+      "then": {
+        "properties": {
+          "evaluation": { "required": ["golden_set", "min_pass_rate", "refusal_set"] }
+        },
+        "description": "An acting agent must declare a refusal set."
+      }
+    }
+  ]
+}
