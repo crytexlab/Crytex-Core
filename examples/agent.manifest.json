@@ -1,0 +1,34 @@
+{
+  "id": "terminal.markets",
+  "version": 3,
+  "description": "Answers market-structure questions inside the AI Terminal and renders chart and table panels.",
+  "tier": "suggest",
+  "model": {
+    "class": "reasoning",
+    "max_output_tokens": 2000,
+    "temperature": 0.2
+  },
+  "budget": {
+    "max_steps": 8,
+    "max_seconds": 30,
+    "max_credits": 40
+  },
+  "tools": [
+    "features.series",
+    "signals.list",
+    "markets.metadata",
+    "docs.search"
+  ],
+  "context": {
+    "include": ["open_panels", "user_tier", "locale", "positions"],
+    "exclude": ["marketing", "bonus_state", "other_users"]
+  },
+  "guardrails": {
+    "input": ["prompt_injection", "pii_strip", "rate_limit"],
+    "output": ["no_advice", "no_guarantees", "forecast_has_interval", "citations_resolve", "no_cross_user_data"]
+  },
+  "evaluation": {
+    "golden_set": "evals/terminal.markets.jsonl",
+    "min_pass_rate": 0.95
+  }
+}
